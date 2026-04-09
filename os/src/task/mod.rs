@@ -15,6 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -201,4 +202,44 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// count id
+pub fn inc_syscall(syscall_id: usize){
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    if syscall_id < 512 {
+        inner.tasks[cur].syscall_counts[syscall_id] += 1;
+    }
+}
+/// count id
+pub fn syscall_count(syscall_id: usize) -> isize{
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    if syscall_id < 512 {
+        let calls = inner.tasks[cur].syscall_counts[syscall_id] as isize;
+        return calls;
+    }
+    0
+}
+/// get current map
+pub fn mmap_current(start_va: VirtAddr, end_va: VirtAddr, perm: MapPermission) -> bool {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    let map = &mut inner.tasks[cur].memory_set;
+    if map.is_intersected(start_va, end_va) {
+        return false;
+    }
+    map.mmap(start_va, end_va, perm);
+    true
+}
+/// get current munmap
+pub fn munmap_current(start_va: VirtAddr, end_va: VirtAddr) -> bool {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    let map = &mut inner.tasks[cur].memory_set;
+    if map.remove_area(start_va, end_va){
+        return true;
+    }
+    false
 }
