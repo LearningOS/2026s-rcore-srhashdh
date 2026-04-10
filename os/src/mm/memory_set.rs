@@ -300,6 +300,7 @@ impl MemorySet {
             false
         }
     }
+
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
