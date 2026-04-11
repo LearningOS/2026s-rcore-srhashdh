@@ -9,6 +9,8 @@ use crate::{
         suspend_current_and_run_next,
     }, timer::get_time_us,
 };
+use crate::mm::{MapPermission, VirtAddr};
+use crate::config::PAGE_SIZE;
 #[repr(C)]
 #[derive(Debug)]
 pub struct TimeVal {
@@ -129,21 +131,56 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
-    
+    if start % PAGE_SIZE != 0 || port & !0x7 != 0 || port & 0x7 == 0 {
+        return -1
+    }
+    let len = (len + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+    let start_va = VirtAddr::from(start);
+    let end_va = VirtAddr::from(start + len);
+    let mut perm = MapPermission::U;
+    if port & 1 != 0 {
+        perm |= MapPermission::R; 
+    }
+    if port & 2 != 0 {
+        perm |= MapPermission::W;
+    }
+    if port & 4 != 0 {
+        perm |= MapPermission::X;
+    }
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let map = &mut inner.memory_set;
+    if map.is_intersected(start_va, end_va) {
+        return -1;
+    }
+    map.mmap(start_va, end_va, perm);
+    0
 }
 
 // YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
+pub fn sys_munmap(start: usize, len: usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    if start % PAGE_SIZE != 0 {
+        return -1
+    }
+    let len = (len + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+    let start_va = VirtAddr::from(start);
+    let end_va = VirtAddr::from(start + len);
+    
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let map = &mut inner.memory_set;
+    if map.remove_area(start_va, end_va){
+        return 0;
+    }
     -1
 }
 
