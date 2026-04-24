@@ -1,8 +1,8 @@
 //! File and filesystem-related syscalls
 use crate::fs::{open_file, OpenFlags, Stat};
-use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
+use crate::mm::{UserBuffer, translated_byte_buffer, translated_refmut, translated_str};
 use crate::task::{current_task, current_user_token};
-
+use crate::fs::ROOT_INODE;
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     trace!("kernel:pid[{}] sys_write", current_task().unwrap().pid.0);
     let token = current_user_token();
@@ -76,28 +76,48 @@ pub fn sys_close(fd: usize) -> isize {
 }
 
 /// YOUR JOB: Implement fstat.
-pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+pub fn sys_fstat(fd: usize, st: *mut Stat) -> isize {
+    let token = current_user_token();
+    let task = current_task().unwrap();
+    let inner = task.inner_exclusive_access();
+    if fd >= inner.fd_table.len() {
+        return -1
+    }
+    if let Some(file) = &inner.fd_table[fd] {
+        let state = translated_refmut(token, st);
+        
+        let get_stat = file.get_stat();
+        state.dev = get_stat.dev;
+        state.ino = get_stat.ino;
+        state.mode = get_stat.mode;
+        state.nlink = get_stat.nlink;
+        
+        return 0;
+    }
     -1
 }
 
 /// YOUR JOB: Implement linkat.
-pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+pub fn sys_linkat(old_name: *const u8, new_name: *const u8) -> isize {
+    
+    let task = current_user_token();
+    let old_name = translated_str(task, old_name);
+    let new_name = translated_str(task, new_name);
+    if ROOT_INODE.link(old_name.as_str(), new_name.as_str()) {
+        return 0;
+    }
     -1
 }
 
 /// YOUR JOB: Implement unlinkat.
-pub fn sys_unlinkat(_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+pub fn sys_unlinkat(name: *const u8) -> isize {
+    
+    let task = current_user_token();
+    let name = translated_str(task, name);
+    if ROOT_INODE.unlink(name.as_str()){
+        return 0;
+    }
+    
+
     -1
 }

@@ -318,6 +318,32 @@ impl MemorySet {
             false
         }
     }
+    /// insert framed area
+    pub fn mmap(&mut self, start_va: VirtAddr, end_va: VirtAddr, perm: MapPermission) {
+        self.insert_framed_area(start_va, end_va, perm);
+    }
+    /// test page
+    pub fn is_intersected(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        for area in self.areas.iter() {
+            if !(start_vpn >= area.vpn_range.get_end() || end_vpn <= area.vpn_range.get_start()) {
+                return true;
+            }
+        }
+        false
+    }
+    /// remove area
+    pub fn remove_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let start_vpn = start_va.floor();
+        let end_vpn = VirtAddr::from(end_va).ceil();
+        if let Some(idx) = self.areas.iter().position(|area| area.vpn_range.get_start() == start_vpn && area.vpn_range.get_end() == end_vpn){
+            let mut area = self.areas.remove(idx);
+            area.unmap(&mut self.page_table);
+            return true;
+        }
+        false
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
