@@ -1,11 +1,13 @@
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_ref, translated_refmut, translated_str},
+    mm::{translated_ref, translated_refmut, translated_str, translated_byte_buffer},
     task::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags,
     },
+    timer::get_time_us,
 };
+use core::slice::from_raw_parts;
 use alloc::{string::String, sync::Arc, vec::Vec};
 #[repr(C)]
 #[derive(Debug)]
@@ -150,12 +152,29 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
-    );
-    -1
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
+    trace!("kernel: sys_get_time");
+    let us = get_time_us();
+    let time_val = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    let token = current_user_token();
+    let len = core::mem::size_of::<TimeVal>();
+    let buffer = translated_byte_buffer(token, ts as *const u8, len);
+    let bytes = unsafe {
+        from_raw_parts(&time_val as *const TimeVal as *const u8, len)
+    };
+    let mut start = 0;
+    for buf in buffer {
+        let end = start + buf.len();
+        buf.copy_from_slice(&bytes[start..end]);
+        start = end;
+    }
+    if start != bytes.len() {
+        return -1;
+    }
+    0
 }
 
 /// mmap syscall

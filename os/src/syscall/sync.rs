@@ -194,7 +194,6 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
             .tid;
     process_inner.deadlock_detector.modify_sem(crate::sync::ModifyType::Allocate, tid, sem_id);
     if process_inner.deadlock_detector.detect_enable && !process_inner.deadlock_detector.detect_sem(){
-        process_inner.deadlock_detector.modify_sem(crate::sync::ModifyType::Release, tid, sem_id);
         return -0xdead;
     }
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
